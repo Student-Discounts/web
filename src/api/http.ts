@@ -16,7 +16,7 @@ export interface Problem {
   status?: number;
   detail?: string;
   code?: string;
-  errors?: Record<string, string[]>;
+  errors?: Record<string, string[]> | { field: string; code?: string; message: string }[];
   message?: string;
 }
 
@@ -95,7 +95,7 @@ async function doRefresh(): Promise<boolean> {
   const refreshToken = readRefreshToken();
   if (!refreshToken) return false;
   try {
-    const pair = await send<TokenPair>('POST', '/api/v1/auth/refresh', { refreshToken }, false);
+    const pair = await publicApi<TokenPair>('POST', '/api/v1/auth/refresh', { refreshToken });
     tokens.store(pair);
     return true;
   } catch (error) {
@@ -107,53 +107,83 @@ async function doRefresh(): Promise<boolean> {
   }
 }
 
-type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-async function send<T>(method: Method, path: string, body: unknown, withAuth: boolean): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json, application/problem+json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (withAuth && accessToken) headers.Authorization = `Bearer ${accessToken}`;
+interface RequestOptions {
+  headers?: HeadersInit;
+  signal?: AbortSignal;
+}
+
+function prepare(method: Method, body: unknown, options?: RequestOptions): RequestInit {
+  const headers = new Headers(options?.headers);
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json, application/problem+json');
+  const multipart = body instanceof FormData;
+  if (body !== undefined && !multipart && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  return { method, headers, signal: options?.signal, body: multipart || body === undefined ? body : JSON.stringify(body) };
+}
+
+async function send(path: string, request: RequestInit, jwt: string | null): Promise<Response> {
+  const headers = new Headers(request.headers);
+  headers.delete('Authorization');
+  if (jwt) headers.set('Authorization', `Bearer ${jwt}`);
 
   let response: Response;
+  request.signal?.throwIfAborted();
   try {
-    response = await fetch(API_BASE_URL + path, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch {
-    throw new ApiError(0, { message: `Шлюз ${API_BASE_URL} недоступен` }, null);
+    response = await fetch(API_BASE_URL + path, { ...request, headers });
+  } catch (error) {
+    request.signal?.throwIfAborted();
+    if (error instanceof Error && error.name === 'AbortError') throw error;
+    throw new ApiError(0, {}, null);
   }
-
-  if (response.ok) {
-    if (response.status === 204) return undefined as T;
-    const text = await response.text();
-    return (text ? JSON.parse(text) : undefined) as T;
-  }
+  if (response.ok) return response;
 
   let problem: Problem = {};
   try {
-    problem = await response.json();
+    const parsed: unknown = await response.json();
+    if (parsed && typeof parsed === 'object') problem = parsed as Problem;
   } catch {
-    // тело не JSON — остаётся только статус
+    request.signal?.throwIfAborted();
   }
   throw new ApiError(response.status, problem, response.headers.get('X-Correlation-ID'));
 }
 
+async function parsed<T>(response: Response): Promise<T> {
+  const text = response.status === 204 ? '' : await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
 /** Запрос с access-токеном; при 401 один раз обновляет токены и повторяет. */
-export async function api<T>(method: Method, path: string, body?: unknown): Promise<T> {
+export async function apiResponse(
+  method: Method,
+  path: string,
+  body?: unknown,
+  options?: RequestOptions,
+): Promise<Response> {
+  const request = prepare(method, body, options);
+  const signal = options?.signal;
+  signal?.throwIfAborted();
   if (!accessToken && tokens.hasRefreshToken()) await refreshTokens();
+  const attemptedToken = accessToken;
   try {
-    return await send<T>(method, path, body, true);
+    return await send(path, request, attemptedToken);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401 && (await refreshTokens())) {
-      return send<T>(method, path, body, true);
-    }
+    signal?.throwIfAborted();
+    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+    const refreshed = (accessToken !== null && accessToken !== attemptedToken) || (await refreshTokens());
+    signal?.throwIfAborted();
+    if (refreshed) return send(path, request, accessToken);
     throw error;
   }
 }
 
-/** Публичный запрос без токена: вход, регистрация. */
-export function publicApi<T>(method: Method, path: string, body?: unknown): Promise<T> {
-  return send<T>(method, path, body, false);
+export async function api<T>(method: Method, path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+  return parsed<T>(await apiResponse(method, path, body, options));
+}
+
+/** Публичный запрос без токена и без обновления сессии. */
+export async function publicApi<T>(method: Method, path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+  return parsed<T>(await send(path, prepare(method, body, options), null));
 }

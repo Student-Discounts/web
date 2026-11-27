@@ -24,13 +24,14 @@ const STATUS_MESSAGES: Record<number, string> = {
   429: 'Слишком много попыток, подождите минуту',
   502: 'Сервис за шлюзом не запущен',
   503: 'Сервис за шлюзом недоступен',
+  504: 'Сервис за шлюзом не ответил вовремя',
 };
 
 export function errorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return error instanceof Error ? error.message : 'Неизвестная ошибка';
   const { code } = error;
   if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
-  return error.problem.detail ?? STATUS_MESSAGES[error.status] ?? error.message;
+  return error.problem.detail ?? error.problem.message ?? STATUS_MESSAGES[error.status] ?? error.message;
 }
 
 export const ROLE_NAMES: Record<Role, string> = {

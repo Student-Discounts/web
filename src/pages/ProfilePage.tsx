@@ -1,30 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, type Session } from '../api/auth';
 import { formatDate, ROLE_NAMES } from '../api/messages';
 import { useAuth } from '../auth/AuthContext';
 import { ErrorBox, Notice, Spinner } from '../components/ui';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Card, CardContent } from '../components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { useRead } from '@/lib/requests';
 
 export function ProfilePage() {
   const { user, reload, forget } = useAuth();
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState<Session[] | null>(null);
+  const sessions = useRead(authApi.sessions, 'sessions');
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const loadSessions = useCallback(async () => {
-    try {
-      setSessions(await authApi.sessions());
-    } catch (e) {
-      setError(e);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+  const [busy, setBusy] = useState(false);
 
   const run = async (action: () => Promise<void>, done: string) => {
+    if (busy) return;
+    setBusy(true);
     setError(null);
     setNotice(null);
     try {
@@ -32,13 +28,15 @@ export function ProfilePage() {
       setNotice(done);
     } catch (e) {
       setError(e);
+    } finally {
+      setBusy(false);
     }
   };
 
   const revoke = (session: Session) =>
     run(async () => {
       await authApi.revokeSession(session.id);
-      await loadSessions();
+      sessions.reload();
     }, 'Сессия завершена: её refresh-токен больше не действует');
 
   const revokeAll = () =>
@@ -52,84 +50,61 @@ export function ProfilePage() {
 
   return (
     <>
-      <section className="card">
-        <div className="card-head">
-          <h1>{user.displayName}</h1>
-          <button type="button" className="secondary" onClick={() => run(reload, 'Профиль обновлён')}>
-            Обновить
-          </button>
-        </div>
-        <dl className="props">
-          <dt>Email</dt>
-          <dd>{user.email}</dd>
-          <dt>Роли</dt>
-          <dd>
-            {user.roles.map((role) => (
-              <span key={role} className="badge">
-                {ROLE_NAMES[role]}
-              </span>
-            ))}
-          </dd>
-          <dt>Зарегистрирован</dt>
-          <dd>{formatDate(user.createdAt)}</dd>
-          <dt>ID</dt>
-          <dd>
-            <code>{user.id}</code>
-          </dd>
-        </dl>
-      </section>
-
-      <section className="card">
-        <div className="card-head">
-          <h2>Сессии</h2>
-          <button type="button" className="danger" onClick={revokeAll}>
-            Завершить все
-          </button>
-        </div>
-        <p className="muted small">
-          Сессия — это вход с одного устройства. Завершённая сессия не сможет обновить токен; уже выданный access-токен
-          действует до 5 минут.
-        </p>
-        <ErrorBox error={error} />
-        <Notice text={notice} />
-        {sessions === null ? (
-          <Spinner />
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Устройство</th>
-                  <th>Вход</th>
-                  <th>Последнее обновление</th>
-                  <th>Истекает</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((session) => (
-                  <tr key={session.id}>
-                    <td className="ellipsis" title={session.userAgent ?? ''}>
-                      {session.userAgent ?? '—'}
-                      {session.current && <span className="badge badge-accent">текущая</span>}
-                    </td>
-                    <td>{formatDate(session.createdAt)}</td>
-                    <td>{formatDate(session.lastUsedAt)}</td>
-                    <td>{formatDate(session.expiresAt)}</td>
-                    <td className="actions">
-                      {!session.current && (
-                        <button type="button" className="secondary small" onClick={() => revoke(session)}>
-                          Завершить
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <Card>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-2xl font-semibold">{user.displayName}</h1>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => run(reload, 'Профиль обновлён')}>Обновить</Button>
           </div>
-        )}
-      </section>
+          <dl className="grid gap-2 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6">
+            <dt className="text-muted-foreground">Email</dt><dd className="break-all">{user.email}</dd>
+            <dt className="text-muted-foreground">Роли</dt>
+            <dd className="flex flex-wrap gap-1">{user.roles.map((role) => <Badge key={role}>{ROLE_NAMES[role]}</Badge>)}</dd>
+            <dt className="text-muted-foreground">Зарегистрирован</dt><dd>{formatDate(user.createdAt)}</dd>
+            <dt className="text-muted-foreground">ID</dt><dd><code>{user.id}</code></dd>
+          </dl>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">Сессии</h2>
+            <Button type="button" variant="destructive" disabled={busy} onClick={revokeAll}>Завершить все</Button>
+          </div>
+          <p className="text-sm text-muted-foreground">Сессия — это вход с одного устройства. После её завершения уже выданный access-токен действует до 5 минут.</p>
+          <ErrorBox error={error ?? sessions.error} />
+          <Notice text={notice} />
+          {sessions.loading && <Spinner />}
+          {!!sessions.error && <Button type="button" variant="outline" onClick={sessions.reload}>Повторить загрузку</Button>}
+          {sessions.data?.length === 0 && <p className="text-muted-foreground">Активных сессий нет.</p>}
+          {!!sessions.data?.length && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Устройство</TableHead><TableHead>Вход</TableHead>
+                  <TableHead>Последнее обновление</TableHead><TableHead>Истекает</TableHead><TableHead>Действие</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sessions.data.map((session) => (
+                  <TableRow key={session.id}>
+                    <TableCell>
+                      <span className="inline-block max-w-60 truncate align-middle" title={session.userAgent ?? ''}>{session.userAgent ?? '—'}</span>
+                      {session.current && <Badge className="ml-2" variant="secondary">текущая</Badge>}
+                    </TableCell>
+                    <TableCell>{formatDate(session.createdAt)}</TableCell>
+                    <TableCell>{formatDate(session.lastUsedAt)}</TableCell>
+                    <TableCell>{formatDate(session.expiresAt)}</TableCell>
+                    <TableCell>
+                      {!session.current && <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => revoke(session)}>Завершить</Button>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </>
   );
 }

@@ -1,12 +1,17 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { ErrorBox } from '../components/ui';
+import { Button } from '../components/ui/button';
+import { Card, CardContent } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 
 export function RegisterPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const from = (useLocation().state as { from?: string } | null)?.from;
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,7 +26,7 @@ export function RegisterPage() {
     setError(null);
     try {
       const created = await authApi.register(email, password, displayName);
-      navigate('/login', { state: { registered: created.email } });
+      navigate('/login', { state: { registered: created.email, from } });
     } catch (e) {
       setError(e);
     } finally {
@@ -30,36 +35,31 @@ export function RegisterPage() {
   };
 
   return (
-    <form className="card narrow" onSubmit={onSubmit}>
-      <h1>Регистрация</h1>
-      <label>
-        Имя
-        <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={100} required />
-      </label>
-      <label>
-        Email
-        <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      </label>
-      <label>
-        Пароль
-        <input
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          minLength={8}
-          maxLength={128}
-          required
-        />
-        <span className="hint">Не меньше 8 символов</span>
-      </label>
-      <ErrorBox error={error} />
-      <button type="submit" disabled={busy}>
-        {busy ? 'Создаём…' : 'Создать аккаунт'}
-      </button>
-      <p className="muted">
-        Уже есть аккаунт? <Link to="/login">Войти</Link>
-      </p>
-    </form>
+    <Card className="mx-auto w-full max-w-md">
+      <CardContent>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <h1 className="text-2xl font-semibold">Регистрация</h1>
+          <div className="grid gap-1.5">
+            <Label htmlFor="register-name">Имя</Label>
+            <Input id="register-name" autoComplete="name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={100} required />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="register-email">Email</Label>
+            <Input id="register-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="register-password">Пароль</Label>
+            <Input id="register-password" type="password" autoComplete="new-password" value={password}
+              onChange={(e) => setPassword(e.target.value)} minLength={8} maxLength={128} aria-describedby="password-hint" required />
+            <p id="password-hint" className="text-xs text-muted-foreground">Не меньше 8 символов</p>
+          </div>
+          <ErrorBox error={error} />
+          <Button type="submit" disabled={busy}>{busy ? 'Создаём…' : 'Создать аккаунт'}</Button>
+          <p className="text-sm text-muted-foreground">
+            Уже есть аккаунт? <Link className="text-primary underline" to="/login" state={{ from }}>Войти</Link>
+          </p>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

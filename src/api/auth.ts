@@ -52,18 +52,18 @@ export const authApi = {
     publicApi<TokenPair>('POST', '/api/v1/auth/login', { email, password }),
   logout: () => api<void>('POST', '/api/v1/auth/logout'),
   me: () => api<User>('GET', '/api/v1/me'),
-  sessions: () => api<Session[]>('GET', '/api/v1/me/sessions'),
+  sessions: (signal?: AbortSignal) => api<Session[]>('GET', '/api/v1/me/sessions', undefined, { signal }),
   revokeSession: (id: string) => api<void>('DELETE', `/api/v1/me/sessions/${encodeURIComponent(id)}`),
   revokeAllSessions: () => api<void>('DELETE', '/api/v1/me/sessions'),
 };
 
 export const adminApi = {
-  findByEmail: (email: string) => api<AdminUser>('GET', `/api/v1/users?email=${encodeURIComponent(email)}`),
-  find: (id: string) => api<AdminUser>('GET', user(id)),
+  findByEmail: (email: string, signal?: AbortSignal) => api<AdminUser>('GET', `/api/v1/users?email=${encodeURIComponent(email)}`, undefined, { signal }),
+  find: (id: string, signal?: AbortSignal) => api<AdminUser>('GET', user(id), undefined, { signal }),
   grantModerator: (id: string) => api<void>('PUT', `${user(id)}/roles/MODERATOR`),
   revokeModerator: (id: string) => api<void>('DELETE', `${user(id)}/roles/MODERATOR`),
   block: (id: string, reason: string) => api<void>('POST', `${user(id)}/block`, { reason }),
   unblock: (id: string) => api<void>('POST', `${user(id)}/unblock`),
   revokeSessions: (id: string) => api<void>('DELETE', `${user(id)}/sessions`),
-  events: (id: string, limit = 50) => api<IdentityEvent[]>('GET', `${user(id)}/identity-events?limit=${limit}`),
+  events: (id: string, signal?: AbortSignal) => api<IdentityEvent[]>('GET', `${user(id)}/identity-events?limit=50`, undefined, { signal }),
 };

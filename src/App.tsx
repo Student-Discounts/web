@@ -3,11 +3,22 @@ import { AuthProvider } from './auth/AuthContext';
 import { Layout } from './components/Layout';
 import { RequireAuth } from './components/RequireAuth';
 import { AdminPage } from './pages/AdminPage';
-import { ComingSoonPage } from './pages/ComingSoonPage';
+import { Card, CardContent } from './components/ui/card';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { RegisterPage } from './pages/RegisterPage';
+import { SearchPage } from './pages/SearchPage';
+import { PlacePage } from './pages/PlacePage';
+import { SubmissionsPage } from './pages/SubmissionsPage';
+import { SubmissionPage } from './pages/SubmissionPage';
+import { ModerationPage } from './pages/ModerationPage';
+import { ReviewPage } from './pages/ReviewPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { ReportQueuePage } from './pages/ReportQueuePage';
+import type { Role } from './api/auth';
+
+const reviewers: Role[] = ['MODERATOR', 'SENIOR_MODERATOR'];
 
 export function App() {
   return (
@@ -34,53 +45,16 @@ export function App() {
                 </RequireAuth>
               }
             />
-            <Route
-              path="search"
-              element={
-                <ComingSoonPage
-                  title="Поиск скидок"
-                  service="search"
-                  endpoints={['GET /api/v1/search/places', 'GET /api/v1/catalog/places/{id}']}
-                />
-              }
-            />
-            <Route
-              path="submissions"
-              element={
-                <RequireAuth>
-                  <ComingSoonPage
-                    title="Мои заявки"
-                    service="submission"
-                    endpoints={[
-                      'GET /api/v1/submissions',
-                      'POST /api/v1/submissions',
-                      'POST /api/v1/submissions/{id}/submit',
-                      'POST /api/v1/media-assets',
-                    ]}
-                  />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="moderation"
-              element={
-                <RequireAuth roles={['MODERATOR', 'SENIOR_MODERATOR']}>
-                  <ComingSoonPage
-                    title="Модерация"
-                    service="moderation"
-                    endpoints={['GET /api/v1/moderation/queue', 'POST /api/v1/moderation/reviews/{id}/commands']}
-                  />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="*"
-              element={
-                <section className="card">
-                  <h1>Страница не найдена</h1>
-                </section>
-              }
-            />
+            <Route path="search" element={<SearchPage />} />
+            <Route path="places/:placeId" element={<PlacePage />} />
+            <Route path="submissions" element={<RequireAuth><SubmissionsPage /></RequireAuth>} />
+            <Route path="submissions/new" element={<RequireAuth><SubmissionPage key="new" /></RequireAuth>} />
+            <Route path="submissions/:submissionId" element={<RequireAuth><SubmissionPage key="existing" /></RequireAuth>} />
+            <Route path="moderation" element={<RequireAuth roles={reviewers}><ModerationPage /></RequireAuth>} />
+            <Route path="moderation/reviews/:submissionId" element={<RequireAuth roles={reviewers}><ReviewPage /></RequireAuth>} />
+            <Route path="moderation/reports" element={<RequireAuth roles={reviewers}><ReportQueuePage /></RequireAuth>} />
+            <Route path="reports" element={<RequireAuth roles={['STUDENT']}><ReportsPage /></RequireAuth>} />
+            <Route path="*" element={<Card><CardContent><h1 className="text-2xl font-semibold">Страница не найдена</h1></CardContent></Card>} />
           </Route>
         </Routes>
       </AuthProvider>
